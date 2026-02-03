@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="theme-color" content="#000000">
+    <title>Player - Munowatch</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background: #000;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .player-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 16px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .back-btn {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+        }
+        
+        .player-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        video, iframe {
+            width: 100%;
+            height: 100vh;
+            background: #000;
+        }
+        
+        .error-message {
+            color: #ff6b6b;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading {
+            color: #00e600;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <header class="player-header">
+        <button class="back-btn" onclick="goBack()">←</button>
+        <span style="color: white;">Now Playing</span>
+    </header>
+
+    <div class="player-container" id="playerContainer">
+        <p class="loading">Loading video...</p>
+    </div>
+
+    <script>
+        function goBack() {
+            if (document.referrer) {
+                window.history.back();
+            } else {
+                window.location.href = 'index.html';
+            }
+        }
+
+        function initPlayer() {
+            const params = new URLSearchParams(window.location.search);
+            const url = params.get('url');
+            const container = document.getElementById('playerContainer');
+
+            if (!url) {
+                container.innerHTML = '<p class="error-message">No video URL provided</p>';
+                return;
+            }
+
+            // Check if it's an iframe embed (YouTube, Vimeo, etc.)
+            if (url.includes('youtube.com') || url.includes('youtu.be')) {
+                const videoId = extractYouTubeId(url);
+                container.innerHTML = `
+                    <iframe 
+                        src="https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0" 
+                        frameborder="0" 
+                        allow="autoplay; fullscreen; picture-in-picture"
+                        allowfullscreen>
+                    </iframe>`;
+            } 
+            // Check for m3u8 streams (HLS)
+            else if (url.includes('.m3u8')) {
+                container.innerHTML = `
+                    <video id="videoPlayer" controls autoplay playsinline>
+                        <source src="${url}" type="application/x-mpegURL">
+                        Your browser doesn't support HLS playback.
+                    </video>`;
+                
+                // Load HLS.js for browsers that don't support HLS natively
+                loadHLS(url);
+            }
+            // Regular video files
+            else {
+                container.innerHTML = `
+                    <video id="videoPlayer" controls autoplay playsinline>
+                        <source src="${url}" type="video/mp4">
+                        Your browser doesn't support video playback.
+                    </video>`;
+            }
+        }
+
+        function extractYouTubeId(url) {
+            const match = url.match(/(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/watch\?.+&v=))([^"&?\/\s]{11})/);
+            return match ? match[1] : '';
+        }
+
+        function loadHLS(url) {
+            const video = document.getElementById('videoPlayer');
+            
+            if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Native HLS support (Safari)
+                video.src = url;
+            } else {
+                // Load HLS.js
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+                script.onload = () => {
+                    if (Hls.isSupported()) {
+                        const hls = new Hls();
+                        hls.loadSource(url);
+                        hls.attachMedia(video);
+                    }
+                };
+                document.head.appendChild(script);
+            }
+        }
+
+        // Initialize on load
+        initPlayer();
+    </script>
+</body>
+</html>

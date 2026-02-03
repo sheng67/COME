@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#00e600">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Munowatch</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/style.css">
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Loading Screen -->
+        <div v-if="loading" class="loading-screen">
+            <div class="loader"></div>
+            <p>Loading...</p>
+        </div>
+
+        <!-- Main App -->
+        <div v-else class="app-container">
+            <!-- Header -->
+            <header class="header">
+                <div class="logo">M<span>W</span></div>
+                <div class="header-actions">
+                    <button @click="searchOpen = !searchOpen" class="icon-btn">
+                        <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                    </button>
+                    <button class="icon-btn">
+                        <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Search Bar -->
+            <div v-show="searchOpen" class="search-bar">
+                <input v-model="searchQuery" type="text" placeholder="Search movies, series...">
+            </div>
+
+            <!-- Hero Slider -->
+            <div v-if="currentView === 'home' && sliderItems.length" class="hero-slider">
+                <div class="slide" v-for="(item, index) in sliderItems" :key="item.id" 
+                     :class="{ active: index === currentSlide }">
+                    <img :src="item.backdrop || item.poster" :alt="item.title" @error="imgError">
+                    <div class="slide-content">
+                        <span class="badge" v-if="item.type === 'tvshow'">Series</span>
+                        <span class="badge movie" v-else>Movie</span>
+                        <h2>{{ item.title }}</h2>
+                        <p>{{ item.description?.substring(0, 100) }}...</p>
+                        <div class="slide-actions">
+                            <button class="btn-play" @click="playVideo(item.url || item.video_url)">
+                                <svg width="20" height="20" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                                Play
+                            </button>
+                            <button class="btn-info" @click="openDetails(item)">More Info</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Slider Dots -->
+                <div class="slider-dots">
+                    <span v-for="(item, index) in sliderItems" :key="index" 
+                          :class="{ active: index === currentSlide }"
+                          @click="currentSlide = index"></span>
+                </div>
+            </div>
+
+            <!-- Content Sections -->
+            <main class="main-content">
+                <!-- Home View -->
+                <template v-if="currentView === 'home'">
+                    <!-- Latest Movies -->
+                    <section class="content-section" v-if="filteredMovies.length">
+                        <div class="section-header">
+                            <h3>Latest Movies</h3>
+                            <span class="see-all">See all →</span>
+                        </div>
+                        <div class="content-row">
+                            <div class="content-card" v-for="movie in filteredMovies.slice(0, 10)" 
+                                 :key="movie.id" @click="openDetails(movie)">
+                                <img :src="movie.poster" :alt="movie.title" @error="imgError">
+                                <p>{{ movie.title }}</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Latest Series -->
+                    <section class="content-section" v-if="filteredSeries.length">
+                        <div class="section-header">
+                            <h3>Latest Series</h3>
+                            <span class="see-all">See all →</span>
+                        </div>
+                        <div class="content-row">
+                            <div class="content-card" v-for="show in filteredSeries.slice(0, 10)" 
+                                 :key="show.id" @click="openDetails(show)">
+                                <img :src="show.poster" :alt="show.title" @error="imgError">
+                                <p>{{ show.title }}</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Live TV -->
+                    <section class="content-section" v-if="filteredChannels.length">
+                        <div class="section-header">
+                            <h3>Live TV</h3>
+                            <span class="see-all">See all →</span>
+                        </div>
+                        <div class="content-row">
+                            <div class="channel-card" v-for="channel in filteredChannels.slice(0, 10)" 
+                                 :key="channel.id" @click="playVideo(channel.url)">
+                                <img :src="channel.logo" :alt="channel.name" @error="imgError">
+                                <p>{{ channel.name }}</p>
+                            </div>
+                        </div>
+                    </section>
+                </template>
+
+                <!-- Categories View -->
+                <template v-if="currentView === 'categories'">
+                    <section class="content-section" v-for="cat in categories" :key="cat.id">
+                        <div class="section-header">
+                            <h3>{{ cat.name }}</h3>
+                        </div>
+                        <div class="content-row">
+                            <div class="content-card" v-for="item in getCategoryContent(cat.name)" 
+                                 :key="item.id" @click="openDetails(item)">
+                                <img :src="item.poster" :alt="item.title" @error="imgError">
+                                <p>{{ item.title }}</p>
+                            </div>
+                        </div>
+                    </section>
+                </template>
+            </main>
+
+            <!-- Bottom Navigation -->
+            <nav class="bottom-nav">
+                <button :class="{ active: currentView === 'home' }" @click="currentView = 'home'">
+                    <svg width="24" height="24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+                    <span>Home</span>
+                </button>
+                <button :class="{ active: currentView === 'categories' }" @click="currentView = 'categories'">
+                    <svg width="24" height="24" fill="currentColor"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+                    <span>Categories</span>
+                </button>
+                <button :class="{ active: currentView === 'saved' }" @click="currentView = 'saved'">
+                    <svg width="24" height="24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
+                    <span>Saved</span>
+                </button>
+                <button :class="{ active: currentView === 'menu' }" @click="currentView = 'menu'">
+                    <svg width="24" height="24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+                    <span>Menu</span>
+                </button>
+            </nav>
+
+            <!-- Detail Modal -->
+            <div v-if="selectedItem" class="modal-overlay" @click.self="selectedItem = null">
+                <div class="modal-content">
+                    <button class="modal-close" @click="selectedItem = null">×</button>
+                    <img :src="selectedItem.backdrop || selectedItem.poster" class="modal-backdrop">
+                    <div class="modal-info">
+                        <h2>{{ selectedItem.title }}</h2>
+                        <p class="meta">{{ selectedItem.year }} • {{ selectedItem.category }}</p>
+                        <p class="description">{{ selectedItem.description }}</p>
+                        <button class="btn-play full" @click="playVideo(selectedItem.url || selectedItem.video_url)">
+                            <svg width="20" height="20" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                            Play Now
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
